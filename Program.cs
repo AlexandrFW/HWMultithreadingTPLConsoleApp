@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Threading;
 
 namespace HWMultithreadingTPLConsoleApp;
 
@@ -6,9 +7,7 @@ internal class Program
 {
     private static readonly Stopwatch stopwatch = new();
 
-    private static List<int> listForProcessing = new();
-
-    private static int sumArrayElements = 0;
+    private static List<long> listForProcessing = new();
 
     [STAThread]
     static void Main(string[] args)
@@ -16,9 +15,11 @@ internal class Program
         Console.WriteLine("HW: Multithreading and TPL!");
         Console.WriteLine();
 
-        FillListByInt(10000);
+        FillListByInt(10000000);
 
         SumListItemsCommon();
+
+        SumListItemsInParallelForEach();
 
         SumListItemsInThreads();
 
@@ -27,11 +28,9 @@ internal class Program
         Console.ReadKey();
     }
 
-    private static void FillListByInt(int amountOfElements)
+    private static void FillListByInt(long amountOfElements)
     {
-        listForProcessing.Clear();
-
-        listForProcessing = Enumerable.Range(1, amountOfElements).ToList();
+        listForProcessing = ExtentionLong.Range(1, amountOfElements).ToList(); 
     }
 
     private static void SumListItemsCommon()
@@ -40,7 +39,8 @@ internal class Program
 
         stopwatch.Start();
 
-        int sumListItemsResult = 0;
+        long sumListItemsResult = 0;
+
         for (int i = 0; i < listForProcessing.Count; i++)
         {
             sumListItemsResult += listForProcessing[i]; 
@@ -55,13 +55,13 @@ internal class Program
         Console.WriteLine();
     }
 
-    private static void SumListItemsInThreads()
+    private static void SumListItemsInParallelForEach()
     {
         stopwatch.Reset();
 
         stopwatch.Start();
 
-        var sumListItemsResult = 0;
+        long sumListItemsResult = 0;
 
         Parallel.ForEach(listForProcessing, i => Interlocked.Add(ref sumListItemsResult, i));
 
@@ -69,8 +69,54 @@ internal class Program
 
         stopwatch.Stop();
 
-        Console.WriteLine($"Время, затраченное на подсчёт суммы элементов массива через Threads {elapsed.TotalMilliseconds}ms\r\n" +
+        Console.WriteLine($"Время, затраченное на подсчёт суммы элементов массива через Parallel.ForEach {elapsed.TotalMilliseconds}ms\r\n" +
                           $"Сумма элементов: {sumListItemsResult}");
+        Console.WriteLine();
+    }
+
+    private static void SumListItemsInThreads()
+    {
+        var obj = new object();
+
+        long totalSum = 0;
+        int numberOfThreads = 3;
+
+        var sum = new long[numberOfThreads];        
+
+        var threadsArray = new Thread[numberOfThreads];
+        var threads = new List<Thread>();
+
+        stopwatch.Reset();
+
+        stopwatch.Start();
+
+        for (int i = 0; i < numberOfThreads; i++)
+        {
+            threadsArray[i] = new Thread((index) => 
+            {
+                int thId = (int)index!;
+                for (int i = (thId * (listForProcessing.Count / numberOfThreads)); i < (thId + 1) * listForProcessing.Count / numberOfThreads; i++)
+                {
+                    lock (obj)
+                    {
+                        totalSum += listForProcessing[i];
+                    }
+                }
+            });
+            threadsArray[i].Start(i);
+        }
+
+        for (int i = 0; i < numberOfThreads; i++)
+        {
+            threadsArray[i].Join();
+        }
+
+        var elapsed = stopwatch.Elapsed;
+
+        stopwatch.Stop();
+
+        Console.WriteLine($"Время, затраченное на подсчёт суммы элементов массива через Threads {elapsed.TotalMilliseconds}ms\r\n" +
+                          $"Сумма элементов: {totalSum}");
         Console.WriteLine();
     }
 
@@ -80,7 +126,9 @@ internal class Program
 
         stopwatch.Start();
 
-        var sumListItemsResult = listForProcessing.AsParallel().Sum();
+        long sumListItemsResult = 0;
+
+        sumListItemsResult = listForProcessing.AsParallel().Select(x => x).Sum();
 
         var elapsed = stopwatch.Elapsed;
 
@@ -89,7 +137,16 @@ internal class Program
         Console.WriteLine($"Время, затраченное на подсчёт суммы элементов массива через LINQ {elapsed.TotalMilliseconds}ms\r\n" +
                           $"Сумма элементов: {sumListItemsResult}");
         Console.WriteLine();
-    }  
+    }
+}
 
-
+public static class ExtentionLong
+{
+    public static IEnumerable<long> Range(this long source, long length)
+    {
+        for (long i = source; i < length; i++)
+        {
+            yield return i;
+        }
+    }
 }
