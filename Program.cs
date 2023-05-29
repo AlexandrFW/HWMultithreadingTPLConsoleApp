@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 
 namespace HWMultithreadingTPLConsoleApp;
@@ -76,40 +77,57 @@ internal class Program
 
     private static void SumListItemsInThreads()
     {
-        var obj = new object();
+        object obj = new object();
 
         long totalSum = 0;
-        int numberOfThreads = 3;
+        int numberOfThreads = 10;
 
-        var sum = new long[numberOfThreads];        
+        var totalSumList = new ConcurrentBag<long>();
 
-        var threadsArray = new Thread[numberOfThreads];
-        var threads = new List<Thread>();
+        var countDownEvent = new CountdownEvent(numberOfThreads);
+
+        var firstIndex = 0;
+
+        var rowLines = listForProcessing.Count;
+
+        var rangeLength = rowLines / numberOfThreads;
 
         stopwatch.Reset();
 
         stopwatch.Start();
 
-        for (int i = 0; i < numberOfThreads; i++)
+        for (int i = 1; i <= numberOfThreads; i++)
         {
-            threadsArray[i] = new Thread((index) => 
-            {
-                int thId = (int)index!;
-                for (int i = (thId * (listForProcessing.Count / numberOfThreads)); i < (thId + 1) * listForProcessing.Count / numberOfThreads; i++)
-                {
-                    lock (obj)
-                    {
-                        totalSum += listForProcessing[i];
-                    }
-                }
-            });
-            threadsArray[i].Start(i);
-        }
+            var endOfRange = firstIndex + rangeLength;
 
-        for (int i = 0; i < numberOfThreads; i++)
-        {
-            threadsArray[i].Join();
-        }
+            if (endOfRange > rowLines)
+                endOfRange = rowLines - 1;
+
+            (int, int) tuple = (firstIndex, endOfRange);
+
+            var thread = new Thread((randeParameters) => 
+            {
+                long currentSum = 0;
+                
+                (int minimum, int maximum) = ((int, int))randeParameters!;
+
+                for (int j = minimum; j <= maximum; j++)
+                {
+                    currentSum += listForProcessing[j];
+                }
+
+                totalSumList.Add(currentSum);
+
+                countDownEvent.Signal();
+            });
+            thread.Start(tuple);
+
+            firstIndex = endOfRange + 1;
+        }              
+
+        countDownEvent.Wait();
+
+        totalSum = totalSumList.Sum();
 
         var elapsed = stopwatch.Elapsed;
 
@@ -144,7 +162,7 @@ public static class ExtentionLong
 {
     public static IEnumerable<long> Range(this long source, long length)
     {
-        for (long i = source; i < length; i++)
+        for (long i = source; i <= length; i++)
         {
             yield return i;
         }
